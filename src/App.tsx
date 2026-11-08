@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import { CutControls } from './map/CutControls'
 import { AiAnswerCard, AiUnavailableNotice, AskPending, SessionEndedNotice } from './ai/AiAnswer'
+import { MatchSummary } from './ai/MatchSummary'
 import { type AskAnswer, type AskService } from './ai/askClient'
 import { DriveTimeEstimate, DriveTimeNotes, type DriveTimeProps } from './map/DriveTimeEstimate'
 import { routingInputs } from './map/driveTimes'
@@ -195,7 +196,13 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
   const [aiAnswer, setAiAnswer] = useState<AskAnswer | null>(null)
   const [aiUnavailable, setAiUnavailable] = useState(false)
   const [aiSessionEnded, setAiSessionEnded] = useState(false)
+  // Counts the changes of the matched set by lens, card or answer; the map fits its camera to each.
+  const [fitVersion, setFitVersion] = useState(0)
   const askRun = useRef<AbortController | null>(null)
+  const selectedRef = useRef<string | null>(null)
+  useEffect(() => {
+    selectedRef.current = selected
+  }, [selected])
 
   useEffect(() => () => askRun.current?.abort(), [])
 
@@ -333,6 +340,23 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
     [tracts],
   )
 
+  /**
+   * The matched set changed by lens, card or answer: the map fits the new set. A selected
+   * neighborhood outside the new set is dropped with its outline and drive-time line, and the panel
+   * goes back to the findings. A lens change keeps the selection (the card follows the new lens).
+   */
+  const refocus = (next: readonly TractRecord[], keepSelection = false) => {
+    const current = selectedRef.current
+    if (current && !keepSelection && !next.some((t) => t.geoid === current)) {
+      setSelected(null)
+      setPanelTab('briefing')
+    }
+    setFitVersion((v) => v + 1)
+  }
+  const matchedBy = (geoids: readonly string[]) => {
+    const wanted = new Set(geoids)
+    return tracts.filter((t) => wanted.has(t.geoid))
+  }
   const resetAsk = () => {
     askRun.current?.abort()
     askRun.current = null
@@ -356,11 +380,17 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
     if (outcome.ok) {
       setAiAnswer(outcome.answer)
       setAskedQuery(q.trim())
+      refocus(
+        outcome.answer.tracts.length > 0
+          ? matchedBy(outcome.answer.tracts)
+          : filterTractsByCohort(tracts, cohort),
+      )
     } else {
       // REQ-39 / SEQ-9 and REQ-66: the built-in wizard answers, with the notice.
       if (outcome.sessionEnded) setAiSessionEnded(true)
       else setAiUnavailable(true)
       setAskedQuery(q)
+      refocus(answerWizardQuery(tracts, q, cut?.no_vehicle).matchedTracts)
     }
   }
   const runQuery = (q: string) => {
@@ -368,14 +398,20 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
     setQuery(q)
     setBrief(null)
     setPanelTab('briefing')
-    if (!q.trim() || !askService) {
+    if (!q.trim()) {
       setAskedQuery(q)
+      refocus(filterTractsByCohort(tracts, cohort))
+      return
+    }
+    if (!askService) {
+      setAskedQuery(q)
+      refocus(answerWizardQuery(tracts, q, cut?.no_vehicle).matchedTracts)
       return
     }
     setAskedQuery('')
     void askAi(askService, q)
   }
-  const chooseCohort = (id: CohortId) => {
+  const chooseCohort = (id: CohortId, fromLens = false) => {
     if (id === 'triple') setPersona('alignment')
     else if (id === 'dual') setPersona('officer')
     else if (id === 'high_need' || id === 'transport') setPersona('planner')
@@ -384,10 +420,11 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
     setAskedQuery('')
     setBrief(null)
     setQuery('')
+    refocus(filterTractsByCohort(tracts, id), fromLens)
   }
   const choosePersona = (id: PersonaLensId) => {
     setPersona(id)
-    chooseCohort(PERSONA_COHORTS[id])
+    chooseCohort(PERSONA_COHORTS[id], true)
   }
   const changeProximity = (miles: number) => {
     setProximityMiles(reachMiles(miles))
@@ -564,6 +601,7 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
                   emphasizeGaps={emphasizeGaps}
                   selectedGeoid={selected}
                   onSelect={selectTract}
+                  fitVersion={fitVersion}
                   overlays={{
                     sba: view.lending && overlays.sba,
                     transport: view.pantry && overlays.transport,
@@ -732,7 +770,6 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
                         answer && persona !== 'alignment'
                           ? {
                               ...aiAnswer,
-                              answer: `${nf.format(answer.matchedTracts.length)} neighborhoods match.`,
                               citations: aiAnswer.citations.filter(
                                 (citation) =>
                                   sourceIdsForView([citation.dataset_id], persona).length > 0,
@@ -741,6 +778,19 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
                           : aiAnswer
                       }
                       knownGeoids={knownGeoids}
+                      lead={
+                        answer ? (
+                          <MatchSummary
+                            count={answer.matchedTracts.length}
+                            // Another view's prose could name the other topic; the count and the
+                            // top matches carry the answer there.
+                            prose={persona === 'alignment' ? aiAnswer.answer : null}
+                            tracts={cohortTracts}
+                            view={view}
+                            onSelect={selectTract}
+                          />
+                        ) : undefined
+                      }
                       onClear={() => runQuery('')}
                     />
                   )}
@@ -748,11 +798,13 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
                     <div className="answer" role="status">
                       {aiUnavailable && <AiUnavailableNotice />}
                       {aiSessionEnded && <SessionEndedNotice />}
-                      <p>
-                        {persona === 'alignment'
-                          ? answer.answerText
-                          : `${nf.format(answer.matchedTracts.length)} neighborhoods match.`}
-                      </p>
+                      <MatchSummary
+                        count={answer.matchedTracts.length}
+                        prose={persona === 'alignment' ? answer.answerText : null}
+                        tracts={cohortTracts}
+                        view={view}
+                        onSelect={selectTract}
+                      />
                       {proximityActive && (
                         <p>Of these, {cohortTracts.length} are beyond the proximity limit.</p>
                       )}
@@ -864,6 +916,7 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
                 {selectedTract ? (
                   <TractEvidence
                     persona={persona}
+                    onBack={() => setPanelTab('briefing')}
                     t={selectedTract}
                     minPopulation={bundle.thresholds.sba_min_population}
                     cut={cut}
@@ -1101,6 +1154,7 @@ function incomeText(t: TractRecord): string {
 function TractEvidence({
   t,
   persona,
+  onBack,
   minPopulation,
   cut,
   reach,
@@ -1108,6 +1162,7 @@ function TractEvidence({
 }: {
   t: TractRecord
   persona: PersonaLensId
+  onBack: () => void
   minPopulation: number
   cut: CutValues
   reach: ReachFacts
@@ -1132,6 +1187,9 @@ function TractEvidence({
   return (
     <article className="evidence" data-testid="tract-evidence-panel">
       <header>
+        <button type="button" className="linklike evidence-back" onClick={onBack}>
+          Back to list
+        </button>
         <h2>{t.name}</h2>
         <div className="muted small">
           {t.county} County · <code>{t.geoid}</code>

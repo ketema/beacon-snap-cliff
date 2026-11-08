@@ -185,6 +185,11 @@ export interface OpportunityMapProps {
   }
   /** Notes shown inside the map's (i) credits box, after the base map credits. */
   readonly attributionNotes?: ReactNode
+  /**
+   * Counts up each time the matched set changes by lens, card or answer. The camera then fits the
+   * focused tracts. Slider ticks and cut changes leave it alone, so the camera stays put for them.
+   */
+  readonly fitVersion?: number
 }
 
 export function OpportunityMap(props: OpportunityMapProps) {
@@ -199,6 +204,7 @@ export function OpportunityMap(props: OpportunityMapProps) {
     onSelect,
     overlays,
     showOverlap = true,
+    fitVersion = 0,
   } = props
   const el = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibre | null>(null)
@@ -502,6 +508,23 @@ export function OpportunityMap(props: OpportunityMapProps) {
     )
     map.setLayoutProperty('sites', 'visibility', overlays.sites ? 'visible' : 'none')
   }, [overlays, ready])
+
+  // The camera follows a new matched set (lens, card or answer), not every recount.
+  const fitted = useRef(0)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || fitted.current === fitVersion) return
+    fitted.current = fitVersion
+    if (fitVersion === 0) return
+    const wanted = new Set(focusedGeoids)
+    const features = tractsGeojson.features.filter((f) => wanted.has(String(f.properties?.geoid)))
+    if (features.length === 0) return
+    map.fitBounds(featureBounds({ ...tractsGeojson, features }), {
+      padding: { top: 64, bottom: 40, left: 48, right: 48 },
+      maxZoom: 12,
+      duration: 700,
+    })
+  }, [fitVersion, focusedGeoids, tractsGeojson, ready])
 
   // Selection outline and camera
   const prev = useRef<string | null>(null)

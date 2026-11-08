@@ -2,6 +2,10 @@ import { driveTimeEstimate, type DriveTimeCache } from './driveTimes'
 import { populationAccess, populationAccessText, type PopulationAccess } from './populationAccess'
 import type { TractRecord } from '../wizard/alignmentWizard'
 
+/** Plain words for the fallback estimate (REQ-67). The number and the rule are unchanged. */
+export const HEURISTIC_NOTE_TEXT =
+  'Estimate from straight-line distance, about 10 miles per 30 minutes. Road routes were not available.'
+
 export interface DriveTimeProps {
   readonly geoid: string
   readonly originLabel: string
@@ -30,7 +34,8 @@ export function DriveTimeEstimate({
       <strong>
         Estimated drive to a Second Harvest site:{' '}
         {estimate.routed ? `${Math.round(estimate.minutes!)} min` : populationAccessText(access)}
-        {!estimate.routed && ' (heuristic)'}
+        {/* POST-APP-16 mark, kept for assistive tech and the contract; the visible note explains it. */}
+        {!estimate.routed && <span className="visually-hidden"> (heuristic)</span>}
       </strong>
       {showNotes && (
         <NoteLines estimate={estimate} access={access} originLabel={props.originLabel} />
@@ -86,7 +91,11 @@ function NoteLines({
             center across listed sites. No live traffic.
           </>
         ) : (
-          estimate.note
+          <>
+            {HEURISTIC_NOTE_TEXT}
+            {/* The routing reason and the contract's fallback label, for assistive tech. */}
+            <span className="visually-hidden"> {estimate.note}</span>
+          </>
         )}
       </p>
       {estimate.routed && (

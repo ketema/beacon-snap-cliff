@@ -2270,18 +2270,24 @@ path = "repo:data/external/second-harvest-food-finder/central_fl_tract_pantry_co
 ds = "DS-X12"
 group = "repo_external_second_harvest_food_finder"
 file_format = "csv"
+publisher = "Second Harvest Food Bank of Central Florida"
+as_of = "2026-11-07"
 
 [[source]]
 path = "repo:data/external/second-harvest-food-finder/second_harvest_food_finder_locations.csv"
 ds = "DS-X12"
 group = "repo_external_second_harvest_food_finder"
 file_format = "csv"
+publisher = "Second Harvest Food Bank of Central Florida"
+as_of = "2026-11-07"
 
 [[source]]
 path = "repo:data/external/second-harvest-food-finder/second_harvest_food_finder_raw_stores.json"
 ds = "DS-X12"
 group = "repo_external_second_harvest_food_finder"
 file_format = "json"
+publisher = "Second Harvest Food Bank of Central Florida"
+as_of = "2026-11-07"
 
 [[source]]
 path = "repo:data/hackathon/beacon-example-datasets/Employed and Unemployed, 16+ Labor Force.zip"

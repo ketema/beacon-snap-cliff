@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { useContext, type ReactNode } from 'react'
 
+import { SourcesContext } from '../sources'
 import {
   AI_UNAVAILABLE_NOTICE,
   SESSION_ENDED_NOTICE,
@@ -36,23 +37,52 @@ const isNumberColumn = (result: AskResult, column: string) =>
   result.rows.some((row) => typeof row[column] === 'number') &&
   result.rows.every((row) => row[column] === null || typeof row[column] === 'number')
 
-/** REQ-40, POST-APP-13: one chip per cited table, with its ID, publisher, as-of date and origin link. */
+const NOT_RECORDED = 'not recorded'
+export const REGISTER_CHIP_TEXT = 'Source: project data register'
+
+/** A warehouse provenance field is stated only when it is not blank and not "not recorded" (REQ-29). */
+const isStated = (value: string) => {
+  const text = value.trim()
+  return text !== '' && text.toLowerCase() !== NOT_RECORDED
+}
+
+/**
+ * REQ-40, POST-APP-13: one chip per cited table, with its ID, publisher, as-of date and origin link.
+ * A field the warehouse did not record falls back to the bundle's source register (REQ-61): the
+ * plain-language source name and its period. A citation that resolves to neither (for example the
+ * repository documents cited as REPO-DOC) collapses into one neutral register chip, so the words
+ * "not recorded" never reach the screen.
+ */
 export function CitationChips({ citations }: { readonly citations: readonly AskCitation[] }) {
+  const register = useContext(SourcesContext)
   const unique = citations.filter(
     (c, i) => citations.findIndex((d) => d.table_name === c.table_name) === i,
   )
   if (unique.length === 0) {
     return <p className="sources">No source was cited for this answer.</p>
   }
+  const resolved = unique.flatMap((c) => {
+    const entry = register.find((s) => s.id === c.dataset_id)
+    const title = isStated(c.publisher) ? c.publisher : (entry?.label ?? null)
+    if (title === null) return []
+    const date = isStated(c.as_of)
+      ? `as of ${c.as_of}`
+      : entry && isStated(entry.period)
+        ? entry.period
+        : null
+    return [{ c, title, date }]
+  })
+  const unresolved = resolved.length < unique.length
   return (
     <ul className="cite-chips" aria-label="Sources for this answer">
-      {unique.map((c) => {
+      {resolved.map(({ c, title, date }) => {
         const body = (
           <>
-            <b>{c.dataset_id}</b> {c.publisher} <span className="cite-date">· as of {c.as_of}</span>
+            <b>{c.dataset_id}</b> {title}
+            {date && <span className="cite-date"> · {date}</span>}
           </>
         )
-        const title = `Table ${c.table_name}. Filter: ${c.applied_filter}.`
+        const hint = `Table ${c.table_name}. Filter: ${c.applied_filter}.`
         return (
           <li key={c.table_name} data-testid={`citation-chip-${c.table_name}`}>
             {isLinkableUrl(c.origin_url) ? (
@@ -61,18 +91,28 @@ export function CitationChips({ citations }: { readonly citations: readonly AskC
                 href={c.origin_url}
                 target="_blank"
                 rel="noreferrer"
-                title={title}
+                title={hint}
               >
                 {body}
               </a>
             ) : (
-              <span className="cite-chip" title={`${title} Origin: ${c.origin_url}.`}>
+              <span className="cite-chip" title={hint}>
                 {body}
               </span>
             )}
           </li>
         )
       })}
+      {unresolved && (
+        <li data-testid="citation-chip-register">
+          <span
+            className="cite-chip"
+            title="Project documents and data files listed in docs/data-sources.md."
+          >
+            {REGISTER_CHIP_TEXT}
+          </span>
+        </li>
+      )}
     </ul>
   )
 }
@@ -118,18 +158,21 @@ function ResultTable({ result }: { readonly result: AskResult }) {
 export function AiAnswerCard({
   answer,
   knownGeoids,
+  lead,
   extra,
   onClear,
 }: {
   readonly answer: AskAnswer
   readonly knownGeoids: ReadonlySet<string>
+  /** Replaces the plain answer text, for a reply that resolves to a set of neighborhoods. */
+  readonly lead?: ReactNode
   readonly extra?: ReactNode
   readonly onClear: () => void
 }) {
   const tables = answer.results.filter((r) => r.rows.length > 0 && !tractColumn(r, knownGeoids))
   return (
     <div className="answer answer--ai" role="status" data-testid="ai-answer">
-      <p>{answer.answer}</p>
+      {lead ?? <p>{answer.answer}</p>}
       {extra}
       {tables.map((r, i) => (
         <ResultTable key={i} result={r} />
