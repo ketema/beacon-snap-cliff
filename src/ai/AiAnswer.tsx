@@ -25,9 +25,12 @@ function cellText(cell: AskCell | undefined): string {
 
 const ACRONYMS = new Set(['acs', 'fema', 'geoid', 'id', 'nri', 'sba', 'snap', 'usda'])
 
-/** `few_sba_loans` -> "Few SBA loans". */
+/** `few_sba_loans` or "few sba loans" -> "Few SBA loans". The QueryService sends spaces (FORBIDDEN-ANS-1). */
 function heading(column: string): string {
-  const words = column.split('_').map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w))
+  const words = column
+    .split(/[\s_]+/)
+    .filter(Boolean)
+    .map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w))
   const text = words.join(' ')
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
