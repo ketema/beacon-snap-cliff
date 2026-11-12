@@ -1,0 +1,43 @@
+.pdf-export-row {
+  margin: 12px 0 16px;
+}
+
+.pdf-export-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border: 1px solid var(--primary-700);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--primary-700);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pdf-export-button:hover {
+  background: var(--paper-2);
+}
+
+.pdf-export-button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.pdf-export-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.pdf-export-error {
+  color: var(--signal);
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .pdf-export-button {
+    width: 100%;
+  }
+}

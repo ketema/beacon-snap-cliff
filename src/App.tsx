@@ -20,6 +20,7 @@ import {
 import { plainConfidence, plainMissing } from './plainWords'
 import { actionSteps, sourceIdsForView, viewInsights, VIEW_CONTENT } from './viewContent'
 import { DataSources, SourceLinks } from './SourceCitations'
+import { ExportPlanPdf } from './export/ExportPlanPdf'
 import { SourcesContext, type SourceEntry } from './sources'
 import {
   DEFAULT_PERCENTILES,
@@ -804,7 +805,14 @@ export function OpportunitiesApp(props: OpportunitiesAppProps) {
                   >
                     Make an action plan
                   </button>
-                  {brief && <BriefCard brief={brief} tracts={cohortTracts} />}
+                  {brief && (
+                    <BriefCard
+                      brief={brief}
+                      tracts={cohortTracts}
+                      cut={cut}
+                      minPopulation={bundle.thresholds.sba_min_population}
+                    />
+                  )}
                 </section>
 
                 <section className="shortlist">
@@ -966,9 +974,13 @@ function Pill({
 function BriefCard({
   brief,
   tracts,
+  cut,
+  minPopulation,
 }: {
   brief: CoordinatedActionBrief
   tracts: readonly TractRecord[]
+  cut: CutValues
+  minPopulation: number
 }) {
   const needsAssessment = brief.dataCheckTractCount === brief.targetTractCount
   const view = VIEW_CONTENT[brief.personaId]
@@ -976,6 +988,7 @@ function BriefCard({
   return (
     <article className="brief" data-testid="coordinated-action-brief">
       <h3>{brief.title}</h3>
+      <ExportPlanPdf brief={brief} tracts={tracts} cut={cut} minPopulation={minPopulation} />
       <p className="brief-overview">
         {brief.targetTractCount} neighborhoods · {nf.format(brief.totalResidentsCovered)} people
       </p>
